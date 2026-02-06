@@ -5,161 +5,83 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from datetime import time
-import pytest
-from schedule.daily import CircularDailySchedule, InvalidScheduleError
+from schedule.daily import DailySchedule
 
 
-class TestValidation:
-    """Тесты валидации (чётное/нечётное количество точек)"""
+def test_full_workflow():
+    """Полный тест: работа 9-18 с обедом 12-13 (через set)"""
+    s = DailySchedule(default=False)
 
-    def test_empty_is_valid(self):
-        """Пустое расписание — валидно (0 точек, чётное)"""
-        s = CircularDailySchedule(default=False)
-        assert s.is_valid() is True
+    # Строим пошагово
+    s.set(time(9, 0), True)  # 9:00-... True (пока всё)
+    s.set(time(18, 0), False)  # 18:00-9:00 False
+    s.set(time(12, 0), False)  # 12:00-18:00 False (обед)
+    s.set(time(13, 0), True)  # 13:00-18:00 True
 
-    def test_one_point_invalid(self):
-        """Одна точка — невалидно"""
-        s = CircularDailySchedule(default=False)
-        s.set(time(9, 0, 0), True)
-        assert len(s) == 1
-        assert s.is_valid() is False
+    # Проверки
+    assert s.get(time(8, 59)) == False
+    assert s.get(time(9, 0)) == True
+    assert s.get(time(11, 59)) == True
+    assert s.get(time(12, 0)) == False  # Обед
+    assert s.get(time(12, 30)) == False
+    assert s.get(time(13, 0)) == True  # Работа
+    assert s.get(time(17, 59)) == True
+    assert s.get(time(18, 0)) == False  # Конец
 
-    def test_two_points_valid(self):
-        """Две точки — валидно"""
-        s = CircularDailySchedule(default=False)
-        s.set(time(9, 0, 0), True)
-        s.set(time(18, 0, 0), False)
-        assert len(s) == 2
-        assert s.is_valid() is True
+    # Интервалы
+    iv = s.intervals()
+    assert len(iv) == 4  # True, False, True, False
 
-    def test_three_points_invalid(self):
-        """Три точки — невалидно"""
-        s = CircularDailySchedule(default=False)
-        s.set(time(9, 0, 0), True)
-        s.set(time(12, 0, 0), False)
-        s.set(time(15, 0, 0), True)
-        assert len(s) == 3
-        assert s.is_valid() is False
-
-    def test_four_points_valid(self):
-        """Четыре точки — валидно"""
-        s = CircularDailySchedule(default=False)
-        s.set(time(9, 0, 0), True)
-        s.set(time(12, 0, 0), False)
-        s.set(time(15, 0, 0), True)
-        s.set(time(18, 0, 0), False)
-        assert len(s) == 4
-        assert s.is_valid() is True
+    print("✓ Full workflow OK")
+    print(f"Intervals: {iv}")
 
 
-class TestValidationExceptions:
-    """Исключения при работе с невалидным расписанием"""
+def test_circular_night_shift():
+    """Ночная смена 22:00-06:00"""
+    s = DailySchedule(default=False)
 
-    def test_validate_raises_on_invalid(self):
-        s = CircularDailySchedule(default=False)
-        s.set(time(9, 0, 0), True)  # Одна точка
+    s.set(time(22, 0), True)
+    s.set(time(6, 0), False)
 
-        with pytest.raises(InvalidScheduleError):
-            s.validate()
+    assert s.get(time(21, 59)) == False
+    assert s.get(time(22, 0)) == True
+    assert s.get(time(23, 59)) == True
+    assert s.get(time(0, 0)) == True  # Через полночь!
+    assert s.get(time(5, 59)) == True
+    assert s.get(time(6, 0)) == False
 
-    def test_intervals_raises_on_invalid(self):
-        s = CircularDailySchedule(default=False)
-        s.set(time(9, 0, 0), True)
-
-        with pytest.raises(InvalidScheduleError):
-            s.intervals()
-
-    def test_force_validate_on_get_raises(self):
-        s = CircularDailySchedule(default=False)
-        s.set(time(9, 0, 0), True)
-
-        with pytest.raises(InvalidScheduleError):
-            s.force_validate_on_get(time(10, 0, 0))
+    print("✓ Circular night shift OK")
 
 
-class TestIntervalsValidOnly:
-    """Интервалы только для валидного расписания"""
+def test_first_set_fills_all():
+    """Первая точка заливает всё кроме последней точки"""
+    s = DailySchedule(default=False)
 
-    def test_intervals_two_points(self):
-        s = CircularDailySchedule(default=False)
-        s.set(time(9, 0, 0), True)
-        s.set(time(18, 0, 0), False)
+    s.set(time(9, 0), True)
+    # True сейчас от 9:00 до 08:58
+    assert s.get(time(9, 0)) == True
+    assert s.get(time(8, 59)) == False
+    assert s.get(time(0, 0)) == True
+    assert s.get(time(23, 59)) == True
 
-        # Валидно — интервалы работают
-        intervals = s.intervals()
-        assert len(intervals) == 1
-        assert intervals[0] == (time(9, 0, 0), time(18, 0, 0), True)
+    s.set(time(18, 0), False)
+    # Теперь 9-18 True, остальное False
+    assert s.get(time(12, 0)) == True
+    assert s.get(time(20, 0)) == False
 
-    def test_intervals_four_points(self):
-        s = CircularDailySchedule(default=False)
-        s.set(time(9, 0, 0), True)
-        s.set(time(12, 0, 0), False)
-        s.set(time(15, 0, 0), True)
-        s.set(time(18, 0, 0), False)
-
-        intervals = s.intervals()
-        assert len(intervals) == 2
-        assert intervals[0] == (time(9, 0, 0), time(12, 0, 0), True)
-        assert intervals[1] == (time(15, 0, 0), time(18, 0, 0), True)
-
-    def test_intervals_empty(self):
-        s = CircularDailySchedule(default=False)
-        intervals = s.intervals()
-        assert len(intervals) == 1
-        assert intervals[0] == (time(0, 0, 0), time(0, 0, 0), False)
+    print("✓ First set fills all OK")
 
 
-class TestGetWithoutValidation:
-    """get() работает даже с невалидным, но is_valid проверяет"""
+def test_memory():
+    """Проверка памяти"""
+    s = DailySchedule()
+    assert len(s._data) == 1440
+    print(f"✓ Memory: {s.memory_usage()} bytes (base 1440)")
 
-    def test_get_works_on_invalid(self):
-        """get() не выбрасывает исключение, но is_valid == False"""
-        s = CircularDailySchedule(default=False)
-        s.set(time(9, 0, 0), True)  # Невалидно
-
-        # get() работает (возвращает что-то)
-        result = s.get(time(10, 0, 0))
-        assert result is True
-
-        # но расписание помечено невалидным
-        assert s.is_valid() is False
-
-
-class TestNormalizationAffectsValidity:
-    """Нормализация и валидность"""
-
-    def test_same_second_replace_leaves_invalid(self):
-        """Замена в той же секунде: остаётся 1 точка — невалидно"""
-        s = CircularDailySchedule(default=False)
-        s.set(time(9, 0, 0), True)
-        s.set(time(9, 0, 0), False)
-
-        assert len(s) == 1
-        assert s.is_valid() is False
-
-    def test_three_points_invalid_four_valid(self):
-        """3 точки — невалидно, 4 точки — валидно"""
-        s = CircularDailySchedule(default=False)
-        s.set(time(9, 0, 0), True)
-        s.set(time(12, 0, 0), False)
-        s.set(time(15, 0, 0), True)
-
-        assert len(s) == 3
-        assert s.is_valid() is False
-
-        s.set(time(18, 0, 0), False)
-        assert len(s) == 4
-        assert s.is_valid() is True
-
-    def test_consecutive_same_state_removed(self):
-        """Удаление подряд одинаковых состояний"""
-        s = CircularDailySchedule(default=False)
-        s.set(time(9, 0, 0), True)
-        s.set(time(10, 0, 0), True)  # Дубликат, удалится
-        s.set(time(12, 0, 0), False)  # Должно остаться 2 точки
-
-        assert len(s) == 2
-        assert s.is_valid() is True
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    test_full_workflow()
+    test_circular_night_shift()
+    test_first_set_fills_all()
+    test_memory()
+    print("\nAll tests passed!")

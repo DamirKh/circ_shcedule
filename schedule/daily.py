@@ -1,156 +1,129 @@
-#schedule.daily
+# schedule/daily.py
 from datetime import time
-from dataclasses import dataclass
 from typing import List, Tuple
-from bisect import bisect_right
 
-class InvalidScheduleError(ValueError):
-    """Расписание невалидно (нечётное количество точек)"""
-    pass
+D={
+    False: 0,
+    True: 255
+}
 
-
-def to_time(self, seconds: int) -> time:
-    seconds = seconds % self.SECONDS_IN_DAY
-    return time(seconds // 3600, (seconds % 3600) // 60, seconds % 60)
-
-
-@dataclass
-class SchedulePoint:
-    """Точка изменения состояния"""
-    timestamp: int
-    state: bool  # Состояние, начинающееся с этого момента
-
-    def __repr__(self):
-        return f"{self.timestamp.strftime('%Y-%m-%d %H:%M:%S')}->{self.state}"
-
-class CircularDailySchedule:
+class DailySchedule:
     """
-    Кольцевое расписание на сутки.
-    Каждая секунда имеет состояние: True или False.
-
-    Без автоматической нормализации. Точки хранятся как есть.
+    Кольцевое расписание на сутки, гранулярность 1 минута.
+    Оптимизировано для MicroPython: 1440 байт, O(1) чтение.
     """
-    SECONDS_IN_DAY = 24 * 60 * 60
+
+    MINUTES_IN_DAY = 1440
 
     def __init__(self, default: bool = False):
-        self._points: List[int] = []
-        self._states: List[bool] = []
-        self._default = default
+        self._default = D[default]
+        self._data = bytearray(self.MINUTES_IN_DAY)
+        for i in range(1, self.MINUTES_IN_DAY):
+            self._data[i] = self._default
+        self._points = None
 
-    def _to_seconds(self, t: time) -> int:
-        return t.hour * 3600 + t.minute * 60 + t.second
+    def _to_minutes(self, t: time) -> int:
+        return t.hour * 60 + t.minute
 
-
-
-    def normalize(self) -> None:
-        """
-        Явная нормализация: удаляет дубликаты (точно совпадающие время+состояние)
-        и сортирует. Не удаляет подряд идущие одинаковые состояния!
-        """
-        if not self._points:
-            return
-
-        # Сортируем по времени
-        self._points.sort(key=lambda x: x[0])
-
-        # Удаляем точно совпадающие (время и состояние)
-        cleaned = []
-        seen = set()
-        for sec, state in self._points:
-            key = (sec, state)
-            if key not in seen:
-                cleaned.append((sec, state))
-                seen.add(key)
-
-        self._points = cleaned
-
-    def is_valid(self) -> bool:
-        """Проверка валидности: чётное количество точек"""
-        return len(self._points) % 2 == 0
-
-    def validate(self) -> None:
-        """Выбрасывает исключение, если расписание невалидно"""
-        if not self.is_valid():
-            raise InvalidScheduleError(
-                f"Невалидное расписание: {len(self._points)} точек (должно быть чётное)"
-            )
+    def _invalidate(self) -> None:
+        self._points = None
 
     def set(self, t: time, state: bool) -> None:
-        """Установить состояние на момент t. Без автоматической нормализации."""
-        sec = self._to_seconds(t)
+        minute = self._to_minutes(t)
+        new_val = D[state]
 
-        # Проверяем, нет ли уже точно такой же точки
-        for existing_sec, existing_state in self._points:
-            if existing_sec == sec and existing_state == state:
-                return  # Точно такая же точка уже есть
+        if self._data[minute] == new_val:
+            return
+        c=0
+        for n in range(self.MINUTES_IN_DAY):
+            i = (minute + n) % self.MINUTES_IN_DAY
+            if self._data[i] == new_val:
+                break
+            c+=1
+            self._data[i] = new_val
 
-        self._points.append((sec, state))
-        # Сортируем для удобства, но не нормализуем
-        self._points.sort(key=lambda x: x[0])
+        if c==self.MINUTES_IN_DAY:
+            # Обошли полный круг (не первая итерация и вернулись на старт)
+            prev = (minute - 1) % self.MINUTES_IN_DAY
+            self._data[prev] = D[not state]
 
-        self._points.append((sec, state))
-        self._normalize()
+        self._invalidate()
+
+    def set_range(self, start: time, end: time, state: bool) -> None:
+        """Установить состояние на интервал [start, end)."""
+        start_m = self._to_minutes(start)
+        end_m = self._to_minutes(end)
+        val = D[state]
+        data = self._data
+
+        if start_m < end_m:
+            for i in range(start_m, end_m):
+                data[i] = val
+        elif start_m > end_m:
+            for i in range(start_m, self.MINUTES_IN_DAY):
+                data[i] = val
+            for i in range(0, end_m):
+                data[i] = val
+
+        self._invalidate()
+
+    def fill(self, state: bool) -> None:
+        """Заполнить всё расписание одним состоянием."""
+        val = D[state]
+        for i in range(self.MINUTES_IN_DAY):
+            self._data[i] = val
+        self._invalidate()
 
     def get(self, t: time) -> bool:
-        """
-        Получить состояние на момент t.
+        """O(1) чтение состояния на момент t."""
+        minute = self._to_minutes(t)
+        return bool(self._data[minute])
 
-        ВАЛИДНОЕ расписание: чётное количество точек, чередование True/False.
-        НЕВАЛИДНОЕ расписание: нечётное количество — возвращает default
-        или последнее состояние (зависит от реализации).
-        """
-        if not self._points:
-            return self._default
+    def get_minute(self, minute: int) -> bool:
+        """Прямой доступ по номеру минуты 0-1439."""
+        return bool(self._data[minute])
 
-        # При нечётном количестве — расписание незавершено
-        # Можно: вернуть default, или всё равно вычислить
-        # Выбираем: всё равно вычисляем, но is_valid() == False
+    def _build_points(self) -> None:
+        """Построить список точек изменения (лениво)."""
+        self._points = []
+        prev = self._default
 
-        sec = self._to_seconds(t)
-        idx = bisect_right(self._points, sec, key=lambda x: x[0]) - 1
-
-        if idx >= 0:
-            return self._points[idx][1]
-        else:
-            return self._points[-1][1]
-
-    def force_validate_on_get(self, t: time) -> bool:
-        """get с обязательной проверкой валидности"""
-        self.validate()
-        return self.get(t)
+        for minute in range(self.MINUTES_IN_DAY):
+            curr = self._data[minute]
+            if curr != prev:
+                self._points.append((minute, bool(curr)))
+                prev = curr
 
     def intervals(self) -> List[Tuple[time, time, bool]]:
         """
-        Все интервалы постоянного состояния.
-
-        Только для ВАЛИДНОГО расписания (чётное число точек).
-        При нечётном — выбрасывает исключение.
+        Вернуть интервалы постоянного состояния.
+        Кольцевой последний интервал замыкается на первый.
         """
-        self.validate()
+        if self._points is None:
+            self._build_points()
 
         if not self._points:
-            t = time(0, 0, 0)
-            return [(t, t, self._default)]
+            t = time(0, 0)
+            return [(t, t, bool(self._default))]
 
         result = []
         n = len(self._points)
 
-        for i in range(0, n, 2):  # Шаг 2: пары (начало, конец)
-            start_sec, state = self._points[i]
-            end_sec = self._points[i + 1][0]
+        for i in range(n):
+            start_m, state = self._points[i]
+            end_m = self._points[(i + 1) % n][0]
 
-            start = self._to_time(start_sec)
-            end = self._to_time(end_sec)
+            start = time(start_m // 60, start_m % 60)
+            end = time(end_m // 60, end_m % 60)
             result.append((start, end, state))
 
         return result
 
-    def __len__(self) -> int:
-        return len(self._points)
+    def memory_usage(self) -> int:
+        """Примерное использование памяти в байтах."""
+        base = len(self._data)
+        points = len(self._points) * 8 if self._points else 0
+        return base + points
 
     def __repr__(self) -> str:
-        items = ", ".join(f"{self._to_time(s)}->{int(v)}" for s, v in self._points[:4])
-        if len(self._points) > 4:
-            items += f"...({len(self._points)} total)"
-        valid_mark = "✓" if self.is_valid() else "✗"
-        return f"Schedule[{valid_mark}]({items})"
+        return f"Schedule({self.MINUTES_IN_DAY}m, ~{self.memory_usage()}b)"

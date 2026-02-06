@@ -1,5 +1,6 @@
 #schedule.daily
 from datetime import time
+from dataclasses import dataclass
 from typing import List, Tuple
 from bisect import bisect_right
 
@@ -7,45 +8,59 @@ class InvalidScheduleError(ValueError):
     """Расписание невалидно (нечётное количество точек)"""
     pass
 
+
+def to_time(self, seconds: int) -> time:
+    seconds = seconds % self.SECONDS_IN_DAY
+    return time(seconds // 3600, (seconds % 3600) // 60, seconds % 60)
+
+
+@dataclass
+class SchedulePoint:
+    """Точка изменения состояния"""
+    timestamp: int
+    state: bool  # Состояние, начинающееся с этого момента
+
+    def __repr__(self):
+        return f"{self.timestamp.strftime('%Y-%m-%d %H:%M:%S')}->{self.state}"
+
 class CircularDailySchedule:
     """
     Кольцевое расписание на сутки.
     Каждая секунда имеет состояние: True или False.
 
-    Инвариант: расписание валидно только при чётном количестве точек.
-    Нечётное количество точек означает незавершённый интервал.
+    Без автоматической нормализации. Точки хранятся как есть.
     """
-
     SECONDS_IN_DAY = 24 * 60 * 60
 
     def __init__(self, default: bool = False):
-        self._points: List[Tuple[int, bool]] = []
+        self._points: List[int] = []
+        self._states: List[bool] = []
         self._default = default
 
     def _to_seconds(self, t: time) -> int:
         return t.hour * 3600 + t.minute * 60 + t.second
 
-    def _to_time(self, seconds: int) -> time:
-        seconds = seconds % self.SECONDS_IN_DAY
-        return time(seconds // 3600, (seconds % 3600) // 60, seconds % 60)
 
-    def _normalize(self) -> None:
+
+    def normalize(self) -> None:
+        """
+        Явная нормализация: удаляет дубликаты (точно совпадающие время+состояние)
+        и сортирует. Не удаляет подряд идущие одинаковые состояния!
+        """
         if not self._points:
             return
 
+        # Сортируем по времени
         self._points.sort(key=lambda x: x[0])
 
+        # Удаляем точно совпадающие (время и состояние)
         cleaned = []
-        prev_state = self._default
-
+        seen = set()
         for sec, state in self._points:
-            if state == prev_state:
-                continue
-            if cleaned and cleaned[-1][0] == sec:
-                cleaned[-1] = (sec, state)
-            else:
+            key = (sec, state)
+            if key not in seen:
                 cleaned.append((sec, state))
-            prev_state = state
+                seen.add(key)
 
         self._points = cleaned
 
@@ -61,14 +76,17 @@ class CircularDailySchedule:
             )
 
     def set(self, t: time, state: bool) -> None:
+        """Установить состояние на момент t. Без автоматической нормализации."""
         sec = self._to_seconds(t)
 
-        if self._points:
-            current = self.get(t)
-            if current == state:
-                idx = bisect_right(self._points, sec, key=lambda x: x[0])
-                if idx > 0 and self._points[idx - 1][0] == sec:
-                    return
+        # Проверяем, нет ли уже точно такой же точки
+        for existing_sec, existing_state in self._points:
+            if existing_sec == sec and existing_state == state:
+                return  # Точно такая же точка уже есть
+
+        self._points.append((sec, state))
+        # Сортируем для удобства, но не нормализуем
+        self._points.sort(key=lambda x: x[0])
 
         self._points.append((sec, state))
         self._normalize()

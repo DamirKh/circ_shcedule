@@ -6,169 +6,160 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from datetime import time
 import pytest
-from schedule.daily import CircularDailySchedule
+from schedule.daily import CircularDailySchedule, InvalidScheduleError
 
 
-class TestInitialization:
-    """Тесты конструктора"""
+class TestValidation:
+    """Тесты валидации (чётное/нечётное количество точек)"""
 
-    def test_default_false(self):
+    def test_empty_is_valid(self):
+        """Пустое расписание — валидно (0 точек, чётное)"""
         s = CircularDailySchedule(default=False)
-        assert s.get(time(0, 0, 0)) is False
-        assert len(s) == 0
+        assert s.is_valid() is True
 
-    def test_default_true(self):
-        s = CircularDailySchedule(default=True)
-        assert s.get(time(0, 0, 0)) is True
-        assert len(s) == 0
-
-
-class TestBasicSetGet:
-    """Базовые операции set/get"""
-
-    def test_single_point_sets_all_day(self):
-        """Одна точка = состояние на весь день (чистое кольцо)"""
+    def test_one_point_invalid(self):
+        """Одна точка — невалидно"""
         s = CircularDailySchedule(default=False)
         s.set(time(9, 0, 0), True)
-
-        # Весь день True, т.к. одна точка замыкается сама на себя
-        assert s.get(time(8, 59, 59)) is True  # До точки = после точки (кольцо)
-        assert s.get(time(9, 0, 0)) is True
-        assert s.get(time(12, 0, 0)) is True
-        assert s.get(time(23, 59, 59)) is True
-
-    def test_two_points_create_interval(self):
-        """Две точки = два интервала"""
-        s = CircularDailySchedule(default=False)
-        s.set(time(9, 0, 0), True)
-        s.set(time(18, 0, 0), False)
-
-        assert s.get(time(6, 0, 0)) is False  # До 09:00 = после 18:00 (кольцо)
-        assert s.get(time(9, 0, 0)) is True
-        assert s.get(time(12, 0, 0)) is True
-        assert s.get(time(18, 0, 0)) is False
-        assert s.get(time(22, 0, 0)) is False
-
-    def test_set_back_to_false(self):
-        s = CircularDailySchedule(default=False)
-        s.set(time(9, 0, 0), True)
-        s.set(time(18, 0, 0), False)
-
-        assert s.get(time(12, 0, 0)) is True
-        assert s.get(time(20, 0, 0)) is False
-
-
-class TestCircularBehavior:
-    """Чистое кольцевое поведение"""
-
-    def test_before_first_point_uses_last_point(self):
-        """До первой точки = состояние последней точки (кольцо)"""
-        s = CircularDailySchedule(default=False)
-        s.set(time(9, 0, 0), True)
-        s.set(time(18, 0, 0), False)
-
-        # До 09:00 = после 18:00 = False
-        assert s.get(time(0, 0, 0)) is False
-        assert s.get(time(6, 0, 0)) is False
-        assert s.get(time(8, 59, 59)) is False
-
-    def test_single_point_full_circle(self):
-        """Одна точка = полный круг"""
-        s = CircularDailySchedule(default=False)
-        s.set(time(22, 0, 0), True)
-
-        assert s.get(time(23, 59, 59)) is True
-        assert s.get(time(0, 0, 0)) is True  # Кольцо с 22:00
-        assert s.get(time(21, 59, 59)) is True  # До точки = после точки
-        assert s.get(time(22, 0, 0)) is True
-
-    def test_default_only_when_empty(self):
-        """Default только в пустом расписании"""
-        s = CircularDailySchedule(default=False)
-        assert s.get(time(0, 0, 0)) is False
-
-        s.set(time(12, 0, 0), True)
-        # Теперь весь день True, default не используется
-        assert s.get(time(0, 0, 0)) is True
-
-
-class TestNormalization:
-    """Удаление дубликатов"""
-
-    def test_removes_consecutive_same_state(self):
-        s = CircularDailySchedule(default=False)
-        s.set(time(9, 0, 0), True)
-        s.set(time(10, 0, 0), True)
-
         assert len(s) == 1
+        assert s.is_valid() is False
 
-    def test_same_second_replaces(self):
+    def test_two_points_valid(self):
+        """Две точки — валидно"""
+        s = CircularDailySchedule(default=False)
+        s.set(time(9, 0, 0), True)
+        s.set(time(18, 0, 0), False)
+        assert len(s) == 2
+        assert s.is_valid() is True
+
+    def test_three_points_invalid(self):
+        """Три точки — невалидно"""
+        s = CircularDailySchedule(default=False)
+        s.set(time(9, 0, 0), True)
+        s.set(time(12, 0, 0), False)
+        s.set(time(15, 0, 0), True)
+        assert len(s) == 3
+        assert s.is_valid() is False
+
+    def test_four_points_valid(self):
+        """Четыре точки — валидно"""
+        s = CircularDailySchedule(default=False)
+        s.set(time(9, 0, 0), True)
+        s.set(time(12, 0, 0), False)
+        s.set(time(15, 0, 0), True)
+        s.set(time(18, 0, 0), False)
+        assert len(s) == 4
+        assert s.is_valid() is True
+
+
+class TestValidationExceptions:
+    """Исключения при работе с невалидным расписанием"""
+
+    def test_validate_raises_on_invalid(self):
+        s = CircularDailySchedule(default=False)
+        s.set(time(9, 0, 0), True)  # Одна точка
+
+        with pytest.raises(InvalidScheduleError):
+            s.validate()
+
+    def test_intervals_raises_on_invalid(self):
+        s = CircularDailySchedule(default=False)
+        s.set(time(9, 0, 0), True)
+
+        with pytest.raises(InvalidScheduleError):
+            s.intervals()
+
+    def test_force_validate_on_get_raises(self):
+        s = CircularDailySchedule(default=False)
+        s.set(time(9, 0, 0), True)
+
+        with pytest.raises(InvalidScheduleError):
+            s.force_validate_on_get(time(10, 0, 0))
+
+
+class TestIntervalsValidOnly:
+    """Интервалы только для валидного расписания"""
+
+    def test_intervals_two_points(self):
+        s = CircularDailySchedule(default=False)
+        s.set(time(9, 0, 0), True)
+        s.set(time(18, 0, 0), False)
+
+        # Валидно — интервалы работают
+        intervals = s.intervals()
+        assert len(intervals) == 1
+        assert intervals[0] == (time(9, 0, 0), time(18, 0, 0), True)
+
+    def test_intervals_four_points(self):
+        s = CircularDailySchedule(default=False)
+        s.set(time(9, 0, 0), True)
+        s.set(time(12, 0, 0), False)
+        s.set(time(15, 0, 0), True)
+        s.set(time(18, 0, 0), False)
+
+        intervals = s.intervals()
+        assert len(intervals) == 2
+        assert intervals[0] == (time(9, 0, 0), time(12, 0, 0), True)
+        assert intervals[1] == (time(15, 0, 0), time(18, 0, 0), True)
+
+    def test_intervals_empty(self):
+        s = CircularDailySchedule(default=False)
+        intervals = s.intervals()
+        assert len(intervals) == 1
+        assert intervals[0] == (time(0, 0, 0), time(0, 0, 0), False)
+
+
+class TestGetWithoutValidation:
+    """get() работает даже с невалидным, но is_valid проверяет"""
+
+    def test_get_works_on_invalid(self):
+        """get() не выбрасывает исключение, но is_valid == False"""
+        s = CircularDailySchedule(default=False)
+        s.set(time(9, 0, 0), True)  # Невалидно
+
+        # get() работает (возвращает что-то)
+        result = s.get(time(10, 0, 0))
+        assert result is True
+
+        # но расписание помечено невалидным
+        assert s.is_valid() is False
+
+
+class TestNormalizationAffectsValidity:
+    """Нормализация и валидность"""
+
+    def test_same_second_replace_leaves_invalid(self):
+        """Замена в той же секунде: остаётся 1 точка — невалидно"""
         s = CircularDailySchedule(default=False)
         s.set(time(9, 0, 0), True)
         s.set(time(9, 0, 0), False)
 
         assert len(s) == 1
-        assert s.get(time(9, 0, 0)) is False
+        assert s.is_valid() is False
 
-
-class TestIntervals:
-    """Метод intervals()"""
-
-    def test_empty_schedule(self):
-        s = CircularDailySchedule(default=False)
-        intervals = s.intervals()
-
-        assert len(intervals) == 1
-        assert intervals[0] == (time(0, 0, 0), time(0, 0, 0), False)
-
-    def test_single_point_zero_interval(self):
-        """Одна точка = интервал от неё до неё (весь день)"""
+    def test_three_points_invalid_four_valid(self):
+        """3 точки — невалидно, 4 точки — валидно"""
         s = CircularDailySchedule(default=False)
         s.set(time(9, 0, 0), True)
+        s.set(time(12, 0, 0), False)
+        s.set(time(15, 0, 0), True)
 
-        intervals = s.intervals()
-        assert len(intervals) == 1
-        assert intervals[0] == (time(9, 0, 0), time(9, 0, 0), True)
+        assert len(s) == 3
+        assert s.is_valid() is False
 
-    def test_two_points_circular(self):
-        s = CircularDailySchedule(default=False)
-        s.set(time(9, 0, 0), True)
         s.set(time(18, 0, 0), False)
+        assert len(s) == 4
+        assert s.is_valid() is True
 
-        intervals = s.intervals()
-
-        assert len(intervals) == 2
-        assert intervals[0] == (time(9, 0, 0), time(18, 0, 0), True)
-        assert intervals[1] == (time(18, 0, 0), time(9, 0, 0), False)
-
-
-class TestEdgeCases:
-    """Краевые случаи"""
-
-    def test_exact_boundaries(self):
+    def test_consecutive_same_state_removed(self):
+        """Удаление подряд одинаковых состояний"""
         s = CircularDailySchedule(default=False)
         s.set(time(9, 0, 0), True)
-        s.set(time(18, 0, 0), False)
+        s.set(time(10, 0, 0), True)  # Дубликат, удалится
+        s.set(time(12, 0, 0), False)  # Должно остаться 2 точки
 
-        # Границы включительно слева
-        assert s.get(time(9, 0, 0)) is True
-        assert s.get(time(17, 59, 59)) is True
-        assert s.get(time(18, 0, 0)) is False
-
-    def test_last_second_of_day(self):
-        s = CircularDailySchedule(default=False)
-        s.set(time(23, 59, 59), True)
-
-        assert s.get(time(23, 59, 59)) is True
-        assert s.get(time(0, 0, 0)) is True  # Кольцо
-
-    def test_first_second_of_day(self):
-        s = CircularDailySchedule(default=False)
-        s.set(time(0, 0, 0), True)
-
-        assert s.get(time(0, 0, 0)) is True
-        assert s.get(time(23, 59, 59)) is True  # Кольцо на себя
-
+        assert len(s) == 2
+        assert s.is_valid() is True
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

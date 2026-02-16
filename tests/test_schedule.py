@@ -8,7 +8,7 @@ import pytest
 # Добавляем parent dir в path
 sys.path.insert(0, '.')
 
-from schedule import Schedule, create_daily, TimeSlot
+from schedule import Schedule
 
 
 class TestScheduleBasic:
@@ -231,12 +231,6 @@ class TestScheduleSerialization:
 
 class TestScheduleHelpers:
     """Тесты вспомогательных функций."""
-
-    def test_create_daily(self):
-        s = create_daily(9, 18)
-        assert s.is_active(9, 0) is True
-        assert s.is_active(17, 59) is True
-        assert s.is_active(18, 0) is False
 
     def test_len_empty(self):
         s = Schedule()

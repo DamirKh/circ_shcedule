@@ -196,36 +196,3 @@ class Schedule:
                 count += 1
                 b &= b - 1
         return count
-
-
-# === Фабричные методы для удобства ===
-
-def create_daily(hour_start: int, hour_end: int) -> Schedule:
-    """Создать расписание: активно каждый день с hour_start до hour_end."""
-    s = Schedule()
-    s.set_range(hour_start, 0, hour_end, 0)
-    return s
-
-
-def create_weekend() -> Schedule:
-    """Создать расписание: активно только выходные (суббота-воскресенье)."""
-    # Примечание: это базовое расписание без привязки к дню недели
-    # Для дней недели нужна обёртка поверх Schedule
-    s = Schedule()
-    s.set_range(0, 0, 24, 0)  # Весь день активен - логика дня недени вне этого класса
-    return s
-
-
-# === MicroPython-specific оптимизации ===
-
-def micropython_optimize():
-    """
-    Вызвать после импорта в MicroPython для освобождения памяти.
-    Удаляет методы, не нужные в продакшене.
-    """
-    import sys
-    if hasattr(sys, 'implementation') and sys.implementation.name == 'micropython':
-        # Можно удалить тяжёлые методы если нужно
-        # del Schedule.ranges
-        # del Schedule.__repr__
-        pass

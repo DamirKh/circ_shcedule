@@ -243,6 +243,20 @@
             border: 1px solid #334155;
         }
 
+        .ranges-summary {
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: #60a5fa;
+            line-height: 1.4;
+            max-width: 200px;
+        }
+
+        .ranges-summary:empty::before,
+        .ranges-summary[data-empty="true"]::before {
+            content: "—";
+            color: #64748b;
+        }
+
         .status-item {
             display: flex;
             align-items: center;
@@ -436,8 +450,9 @@
                 <div class="status-indicator" id="statusIndicator"></div>
                 <span id="statusText">Ready</span>
             </div>
-            <div class="status-item">
+            <div class="status-item" style="flex-direction: column; align-items: flex-start; gap: 4px;">
                 <span>Active: <strong id="activeCount">0</strong> / 288 intervals (<strong id="activeTime">00:00</strong>)</span>
+                <div class="ranges-summary" id="rangesSummary">—</div>
             </div>
             <div class="status-item">
                 <button onclick="saveSchedule()" class="success">💾 Save</button>
@@ -749,7 +764,39 @@
             const minutes = totalMinutes % 60;
             const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
             document.getElementById('activeTime').textContent = timeStr;
+
+            // Update ranges summary
+            updateRangesSummary();
         }
+
+        function updateRangesSummary() {
+            const ranges = [];
+            let start = null;
+
+            for (let i = 0; i <= INTERVALS; i++) {
+                const active = i < INTERVALS ? scheduleData[i] : false;
+
+                if (active && start === null) {
+                    start = i;
+                } else if (!active && start !== null) {
+                    const sh = Math.floor(start / 12);
+                    const sm = (start % 12) * 5;
+                    const eh = Math.floor(i / 12);
+                    const em = (i % 12) * 5;
+                    ranges.push(`${sh.toString().padStart(2,'0')}:${sm.toString().padStart(2,'0')}-${eh.toString().padStart(2,'0')}:${em.toString().padStart(2,'0')}`);
+                    start = null;
+                }
+            }
+
+            const summaryEl = document.getElementById('rangesSummary');
+            if (ranges.length === 0) {
+                summaryEl.textContent = '—';
+                summaryEl.setAttribute('data-empty', 'true');
+            } else {
+                summaryEl.textContent = ranges.join(', ');
+                summaryEl.setAttribute('data-empty', 'false');
+            }
+}
 
         function showStatus(text, success) {
             const indicator = document.getElementById('statusIndicator');

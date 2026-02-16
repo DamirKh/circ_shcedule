@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -23,17 +24,62 @@
         .panel {
             background: #1e293b;
             border-radius: 12px;
-            padding: 15px;
             border: 1px solid #334155;
             margin-bottom: 15px;
+            overflow: hidden;
+            transition: all 0.3s ease;
         }
 
-        .panel h2 {
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: #252f47;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.2s;
+        }
+
+        .panel-header:hover {
+            background: #2d3a56;
+        }
+
+        .panel-header h2 {
             font-size: 0.875rem;
-            margin-bottom: 12px;
             color: #94a3b8;
             text-transform: uppercase;
             letter-spacing: 0.05em;
+            margin: 0;
+        }
+
+        .panel-toggle {
+            font-size: 1.2rem;
+            color: #64748b;
+            transition: transform 0.3s ease;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .panel.collapsed .panel-toggle {
+            transform: rotate(-90deg);
+        }
+
+        .panel-content {
+            padding: 15px;
+            transition: all 0.3s ease;
+            max-height: 2000px;
+            opacity: 1;
+        }
+
+        .panel.collapsed .panel-content {
+            max-height: 0;
+            padding: 0 15px;
+            opacity: 0;
+            overflow: hidden;
         }
 
         /* 5-minute Grid: 24 rows x 12 columns (5-min intervals) */
@@ -67,14 +113,14 @@
             align-items: center;
             justify-content: flex-end;
             border-radius: 4px;
-            cursor: pointer;  /* Added */
-            transition: all 0.2s;  /* Added */
-            user-select: none;  /* Added */
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
         }
 
         .grid-hour-label:hover {
-            background: #3b82f6;  /* Added */
-            color: white;  /* Added */
+            background: #3b82f6;
+            color: white;
         }
 
         .grid-cell {
@@ -294,6 +340,8 @@
             .grid-header { font-size: 0.6rem; padding: 4px 1px; }
             .grid-hour-label { font-size: 0.65rem; padding: 6px 2px; }
             button { padding: 6px 10px; font-size: 0.75rem; }
+            .panel-header { padding: 12px; }
+            .panel-header h2 { font-size: 0.8rem; }
         }
     </style>
 </head>
@@ -307,9 +355,12 @@
         <h1>⏰ Schedule Configurator (5-min)</h1>
 
         <!-- Main Grid Panel -->
-        <div class="panel">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                <h2 style="margin: 0;">Time Grid</h2>
+        <div class="panel" id="panel-grid">
+            <div class="panel-header" onclick="togglePanel('panel-grid')">
+                <h2>Time Grid</h2>
+                <span class="panel-toggle">▼</span>
+            </div>
+            <div class="panel-content">
                 <div class="legend">
                     <div class="legend-item">
                         <div class="legend-box active"></div>
@@ -320,53 +371,63 @@
                         <span>OFF</span>
                     </div>
                 </div>
-            </div>
 
-            <div class="controls">
-                <button onclick="setPreset('workday')" class="success">Work (9-18)</button>
-                <button onclick="setPreset('night')" class="secondary">Night (22-6)</button>
-                <button onclick="setPreset('daylight')" class="secondary">Day (6-22)</button>
-                <button onclick="setPreset('always')" class="secondary">All ON</button>
-                <button onclick="setPreset('never')" class="danger">All OFF</button>
-                <button onclick="invertSchedule()" class="secondary">Invert</button>
-            </div>
+                <div class="controls">
+                    <button onclick="setPreset('workday')" class="success">Work (9-18)</button>
+                    <button onclick="setPreset('night')" class="secondary">Night (22-6)</button>
+                    <button onclick="setPreset('daylight')" class="secondary">Day (6-22)</button>
+                    <button onclick="setPreset('always')" class="secondary">All ON</button>
+                    <button onclick="setPreset('never')" class="danger">All OFF</button>
+                    <button onclick="invertSchedule()" class="secondary">Invert</button>
+                </div>
 
-            <div class="schedule-grid" id="grid"></div>
+                <div class="schedule-grid" id="grid"></div>
+            </div>
         </div>
 
         <!-- Range Editor -->
-        <div class="panel">
-            <h2>Quick Range</h2>
-            <div class="range-editor">
-                <input type="number" id="rStartH" placeholder="HH" min="0" max="23" value="9">
-                <span>:</span>
-                <input type="number" id="rStartM" placeholder="MM" min="0" max="55" step="5" value="0">
-                <span>→</span>
-                <input type="number" id="rEndH" placeholder="HH" min="0" max="23" value="18">
-                <span>:</span>
-                <input type="number" id="rEndM" placeholder="MM" min="0" max="55" step="5" value="0">
-                <button onclick="applyRange(true)" class="success">ON</button>
-                <button onclick="applyRange(false)" class="danger">OFF</button>
+        <div class="panel collapsed" id="panel-range">
+            <div class="panel-header" onclick="togglePanel('panel-range')">
+                <h2>Quick Range</h2>
+                <span class="panel-toggle">▼</span>
             </div>
-            <div class="preset-grid">
-                <button onclick="quickRange(0,0,12,0)" class="secondary">Morning (0-12)</button>
-                <button onclick="quickRange(12,0,24,0)" class="secondary">Afternoon (12-24)</button>
-                <button onclick="quickRange(6,0,9,0)" class="secondary">Dawn (6-9)</button>
-                <button onclick="quickRange(18,0,22,0)" class="secondary">Evening (18-22)</button>
+            <div class="panel-content">
+                <div class="range-editor">
+                    <input type="number" id="rStartH" placeholder="HH" min="0" max="23" value="9">
+                    <span>:</span>
+                    <input type="number" id="rStartM" placeholder="MM" min="0" max="55" step="5" value="0">
+                    <span>→</span>
+                    <input type="number" id="rEndH" placeholder="HH" min="0" max="23" value="18">
+                    <span>:</span>
+                    <input type="number" id="rEndM" placeholder="MM" min="0" max="55" step="5" value="0">
+                    <button onclick="applyRange(true)" class="success">ON</button>
+                    <button onclick="applyRange(false)" class="danger">OFF</button>
+                </div>
+                <div class="preset-grid">
+                    <button onclick="quickRange(0,0,12,0)" class="secondary">Morning (0-12)</button>
+                    <button onclick="quickRange(12,0,24,0)" class="secondary">Afternoon (12-24)</button>
+                    <button onclick="quickRange(6,0,9,0)" class="secondary">Dawn (6-9)</button>
+                    <button onclick="quickRange(18,0,22,0)" class="secondary">Evening (18-22)</button>
+                </div>
             </div>
         </div>
 
         <!-- Import/Export -->
-        <div class="panel">
-            <h2>Import / Export</h2>
-            <input type="text" id="hexInput" placeholder="Paste hex string (360 chars)..."
-                   style="width: 100%; margin-bottom: 10px; font-size: 0.75rem;">
-            <div class="controls">
-                <button onclick="importHex()">Import</button>
-                <button onclick="exportHex()" class="secondary">Copy Hex</button>
-                <button onclick="exportCompact()" class="secondary">Copy Compact</button>
+        <div class="panel collapsed" id="panel-import">
+            <div class="panel-header" onclick="togglePanel('panel-import')">
+                <h2>Import / Export</h2>
+                <span class="panel-toggle">▼</span>
             </div>
-            <div class="hex-display" id="hexDisplay">Click Export to see hex representation...</div>
+            <div class="panel-content">
+                <input type="text" id="hexInput" placeholder="Paste hex string (360 chars)..."
+                       style="width: 100%; margin-bottom: 10px; font-size: 0.75rem;">
+                <div class="controls">
+                    <button onclick="importHex()">Import</button>
+                    <button onclick="exportHex()" class="secondary">Copy Hex</button>
+                    <button onclick="exportCompact()" class="secondary">Copy Compact</button>
+                </div>
+                <div class="hex-display" id="hexDisplay">Click Export to see hex representation...</div>
+            </div>
         </div>
 
         <!-- Status Bar -->
@@ -398,6 +459,11 @@
             document.getElementById('loading').classList.add('hidden');
         }
 
+        function togglePanel(panelId) {
+            const panel = document.getElementById(panelId);
+            panel.classList.toggle('collapsed');
+        }
+
         function createGrid() {
             const grid = document.getElementById('grid');
             grid.innerHTML = '';
@@ -412,7 +478,6 @@
             for (let h = 0; h < 24; h++) {
                 // Hour label with click handler for inversion
                 const hourLabel = createCell(h.toString().padStart(2, '0'), 'grid-hour-label');
-                hourLabel.style.cursor = 'pointer';
                 hourLabel.title = 'Click to invert hour';
                 hourLabel.addEventListener('click', () => invertHour(h));
                 grid.appendChild(hourLabel);
@@ -449,7 +514,6 @@
             }
         }
 
-
         function createCell(text, className) {
             const div = document.createElement('div');
             div.className = className;
@@ -466,6 +530,34 @@
             const cell = document.querySelector(`[data-index="${index}"]`);
             if (cell) updateCell(cell, value);
             updateStats();
+        }
+
+        // Invert entire hour (12 intervals)
+        function invertHour(hour) {
+            const startIdx = hour * 12;
+            const endIdx = startIdx + 12;
+
+            // Check current state: if majority is ON, turn all OFF, else turn all ON
+            let activeCount = 0;
+            for (let i = startIdx; i < endIdx; i++) {
+                if (scheduleData[i]) activeCount++;
+            }
+
+            // If more than half active -> turn all off, else turn all on
+            const newState = activeCount <= 6;
+
+            for (let i = startIdx; i < endIdx; i++) {
+                scheduleData[i] = newState;
+            }
+
+            // Update only this hour's cells
+            for (let i = startIdx; i < endIdx; i++) {
+                const cell = document.querySelector(`[data-index="${i}"]`);
+                if (cell) updateCell(cell, newState);
+            }
+
+            updateStats();
+            showStatus(`Hour ${hour.toString().padStart(2,'0')}:00 ${newState ? 'ON' : 'OFF'}`, true);
         }
 
         // API Functions
@@ -589,34 +681,6 @@
             createGrid();
             updateStats();
             showStatus('Inverted', true);
-        }
-
-        // Invert entire hour (12 intervals)
-        function invertHour(hour) {
-            const startIdx = hour * 12;
-            const endIdx = startIdx + 12;
-
-            // Check current state: if majority is ON, turn all OFF, else turn all ON
-            let activeCount = 0;
-            for (let i = startIdx; i < endIdx; i++) {
-                if (scheduleData[i]) activeCount++;
-            }
-
-            // If more than half active -> turn all off, else turn all on
-            const newState = activeCount <= 6;
-
-            for (let i = startIdx; i < endIdx; i++) {
-                scheduleData[i] = newState;
-            }
-
-            // Update only this hour's cells
-            for (let i = startIdx; i < endIdx; i++) {
-                const cell = document.querySelector(`[data-index="${i}"]`);
-                if (cell) updateCell(cell, newState);
-            }
-
-            updateStats();
-            showStatus(`Hour ${hour.toString().padStart(2,'0')}:00 ${newState ? 'ON' : 'OFF'}`, true);
         }
 
         // Import/Export

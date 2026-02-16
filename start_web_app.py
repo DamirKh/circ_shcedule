@@ -1,6 +1,6 @@
+from microdot import Microdot #, Response, redirect, send_file
 try:
     # MicroPython
-    from microdot import Microdot, Response, redirect, send_file
     # from microdot.websocket import with_websocket
     import ujson as json
     import uasyncio as asyncio

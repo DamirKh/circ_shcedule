@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schedule Configurator</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { text-align: center; margin-bottom: 20px; color: #60a5fa; font-size: 1.5rem; }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .panel {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #334155;
+        }
+
+        .panel h2 {
+            font-size: 1rem;
+            margin-bottom: 15px;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Timeline View */
+        .timeline {
+            display: flex;
+            height: 60px;
+            background: #0f172a;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .hour-block {
+            flex: 1;
+            border-right: 1px solid #1e293b;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .hour-block:hover { background: #334155; }
+        .hour-block:last-child { border-right: none; }
+
+        .hour-label {
+            font-size: 0.6rem;
+            text-align: center;
+            padding: 2px;
+            color: #64748b;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        .minute-cells {
+            display: flex;
+            flex: 1;
+        }
+
+        .minute-cell {
+            flex: 1;
+            transition: all 0.1s;
+        }
+
+        .minute-cell.active { background: #10b981; }
+        .minute-cell.active:hover { background: #34d399; }
+        .minute-cell.inactive { background: #ef4444; opacity: 0.3; }
+        .minute-cell.inactive:hover { opacity: 0.6; }
+
+        /* Grid View (24x60) */
+        .schedule-grid {
+            display: grid;
+            grid-template-columns: 40px repeat(60, 1fr);
+            gap: 1px;
+            background: #0f172a;
+            border-radius: 8px;
+            overflow: auto;
+            max-height: 600px;
+            font-size: 0.5rem;
+        }
+
+        .grid-header {
+            background: #334155;
+            padding: 4px;
+            text-align: center;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .grid-hour-label {
+            background: #1e293b;
+            padding: 4px;
+            text-align: right;
+            font-weight: bold;
+            color: #94a3b8;
+            position: sticky;
+            left: 0;
+        }
+
+        .grid-cell {
+            aspect-ratio: 1;
+            cursor: pointer;
+            transition: all 0.1s;
+            background: #ef4444;
+            opacity: 0.3;
+        }
+
+        .grid-cell.active {
+            background: #10b981;
+            opacity: 1;
+        }
+
+        .grid-cell:hover {
+            transform: scale(1.5);
+            z-index: 100;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+
+        button:hover { background: #2563eb; }
+        button.secondary { background: #64748b; }
+        button.secondary:hover { background: #475569; }
+        button.danger { background: #ef4444; }
+        button.danger:hover { background: #dc2626; }
+        button.success { background: #10b981; }
+        button.success:hover { background: #059669; }
+
+        input[type="text"], input[type="number"] {
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: #e2e8f0;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-family: monospace;
+        }
+
+        .range-editor {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+
+        .range-editor input { width: 60px; text-align: center; }
+
+        .status-bar {
+            background: #1e293b;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .status-item { display: flex; align-items: center; gap: 8px; }
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #10b981;
+        }
+        .status-indicator.inactive { background: #ef4444; }
+
+        .hex-display {
+            font-family: monospace;
+            font-size: 0.75rem;
+            word-break: break-all;
+            color: #64748b;
+            max-height: 100px;
+            overflow-y: auto;
+            background: #0f172a;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+
+        /* Presets */
+        .preset-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+
+        .loading {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #334155;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .hidden { display: none !important; }
+
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            body { padding: 10px; }
+            .schedule-grid { font-size: 0.4rem; }
+            .grid-hour-label { font-size: 0.6rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="loading" id="loading"><div class="spinner"></div></div>
+
+    <div class="container">
+        <h1>⏰ Schedule Configurator</h1>
+
+        <div class="grid">
+            <!-- Timeline Overview -->
+            <div class="panel" style="grid-column: 1 / -1;">
+                <h2>24-Hour Timeline</h2>
+                <div class="controls">
+                    <button onclick="setPreset('workday')" class="success">Work Day (9-18)</button>
+                    <button onclick="setPreset('night')" class="secondary">Night (22-6)</button>
+                    <button onclick="setPreset('always')" class="secondary">Always ON</button>
+                    <button onclick="setPreset('never')" class="danger">Always OFF</button>
+                    <button onclick="invertSchedule()" class="secondary">Invert</button>
+                </div>
+                <div class="timeline" id="timeline"></div>
+            </div>
+
+            <!-- Detailed Grid -->
+            <div class="panel" style="grid-column: 1 / -1;">
+                <h2>Minute Grid (Click to toggle)</h2>
+                <div class="schedule-grid" id="grid"></div>
+            </div>
+
+            <!-- Range Editor -->
+            <div class="panel">
+                <h2>Range Editor</h2>
+                <div class="range-editor">
+                    <input type="number" id="rStartH" placeholder="HH" min="0" max="23" value="9">
+                    <span>:</span>
+                    <input type="number" id="rStartM" placeholder="MM" min="0" max="59" value="0">
+                    <span>→</span>
+                    <input type="number" id="rEndH" placeholder="HH" min="0" max="23" value="18">
+                    <span>:</span>
+                    <input type="number" id="rEndM" placeholder="MM" min="0" max="59" value="0">
+                    <button onclick="applyRange(true)" class="success">ON</button>
+                    <button onclick="applyRange(false)" class="danger">OFF</button>
+                </div>
+                <div class="preset-grid">
+                    <button onclick="quickRange(0,0,12,0)" class="secondary">Morning (0-12)</button>
+                    <button onclick="quickRange(12,0,24,0)" class="secondary">Afternoon (12-24)</button>
+                    <button onclick="quickRange(6,0,9,0)" class="secondary">Dawn (6-9)</button>
+                    <button onclick="quickRange(18,0,22,0)" class="secondary">Evening (18-22)</button>
+                </div>
+            </div>
+
+            <!-- Import/Export -->
+            <div class="panel">
+                <h2>Import / Export</h2>
+                <input type="text" id="hexInput" placeholder="Paste hex string..." style="width: 100%; margin-bottom: 10px;">
+                <div class="controls">
+                    <button onclick="importHex()">Import</button>
+                    <button onclick="exportHex()" class="secondary">Export to Clipboard</button>
+                </div>
+                <div class="hex-display" id="hexDisplay"></div>
+            </div>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div class="status-item">
+                <div class="status-indicator" id="statusIndicator"></div>
+                <span id="statusText">Loading...</span>
+            </div>
+            <div class="status-item">
+                <span>Active minutes: <strong id="activeCount">0</strong> / 1440</span>
+            </div>
+            <div class="status-item">
+                <button onclick="saveSchedule()" class="success">💾 Save</button>
+                <button onclick="loadSchedule()" class="secondary">🔄 Reload</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let scheduleData = new Array(1440).fill(false);
+        let isDragging = false;
+        let dragValue = null;
+
+        // Initialize
+        async function init() {
+            await loadSchedule();
+            document.getElementById('loading').classList.add('hidden');
+        }
+
+        // Create grid
+        function createGrid() {
+            const grid = document.getElementById('grid');
+            grid.innerHTML = '';
+
+            // Header row
+            grid.appendChild(createCell('Hour', 'grid-header'));
+            for (let m = 0; m < 60; m += 5) {
+                grid.appendChild(createCell(m.toString().padStart(2, '0'), 'grid-header'));
+            }
+            for (let m = 1; m < 60; m++) {
+                if (m % 5 !== 0) grid.appendChild(createCell('', 'grid-header'));
+            }
+
+            // Hour rows
+            for (let h = 0; h < 24; h++) {
+                grid.appendChild(createCell(h.toString().padStart(2, '0'), 'grid-hour-label'));
+                for (let m = 0; m < 60; m++) {
+                    const cell = createCell('', 'grid-cell');
+                    const idx = h * 60 + m;
+                    cell.dataset.index = idx;
+                    updateCell(cell, scheduleData[idx]);
+
+                    cell.addEventListener('mousedown', (e) => {
+                        isDragging = true;
+                        dragValue = !scheduleData[idx];
+                        toggleMinute(idx, dragValue);
+                    });
+
+                    cell.addEventListener('mouseenter', (e) => {
+                        if (isDragging) toggleMinute(idx, dragValue);
+                    });
+
+                    grid.appendChild(cell);
+                }
+            }
+        }
+
+        function createCell(text, className) {
+            const div = document.createElement('div');
+            div.className = className;
+            div.textContent = text;
+            return div;
+        }
+
+        function updateCell(cell, active) {
+            cell.classList.toggle('active', active);
+        }
+
+        // Timeline
+        function createTimeline() {
+            const timeline = document.getElementById('timeline');
+            timeline.innerHTML = '';
+
+            for (let h = 0; h < 24; h++) {
+                const block = document.createElement('div');
+                block.className = 'hour-block';
+                block.innerHTML = `<div class="hour-label">${h}</div><div class="minute-cells"></div>`;
+
+                const cells = block.querySelector('.minute-cells');
+                for (let m = 0; m < 4; m++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'minute-cell';
+                    const idx = h * 60 + m * 15;
+                    const active = scheduleData.slice(idx, idx + 15).some(x => x);
+                    cell.classList.add(active ? 'active' : 'inactive');
+                    cells.appendChild(cell);
+                }
+
+                block.onclick = () => toggleHour(h);
+                timeline.appendChild(block);
+            }
+        }
+
+        // API Calls
+        async function loadSchedule() {
+            try {
+                const resp = await fetch('/api/schedule');
+                const data = await resp.json();
+                scheduleData = data.minutes;
+                updateUI();
+                showStatus('Loaded', true);
+            } catch (e) {
+                showStatus('Error loading: ' + e, false);
+            }
+        }
+
+        async function saveSchedule() {
+            try {
+                const resp = await fetch('/api/schedule', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({minutes: scheduleData})
+                });
+                const result = await resp.json();
+                showStatus('Saved! ' + result.hex.substring(0, 16) + '...', true);
+                document.getElementById('hexDisplay').textContent = result.hex;
+            } catch (e) {
+                showStatus('Error saving: ' + e, false);
+            }
+        }
+
+        async function toggleMinute(index, value) {
+            scheduleData[index] = value;
+            updateCell(document.querySelector(`[data-index="${index}"]`), value);
+            updateStats();
+            // Debounced save could go here
+        }
+
+        async function applyRange(value) {
+            const sh = parseInt(document.getElementById('rStartH').value) || 0;
+            const sm = parseInt(document.getElementById('rStartM').value) || 0;
+            const eh = parseInt(document.getElementById('rEndH').value) || 0;
+            const em = parseInt(document.getElementById('rEndM').value) || 0;
+
+            for (let h = sh; h <= eh; h++) {
+                const startM = (h === sh) ? sm : 0;
+                const endM = (h === eh) ? em : 59;
+                for (let m = startM; m <= endM; m++) {
+                    scheduleData[h * 60 + m] = value;
+                }
+            }
+            updateUI();
+            showStatus(`Range ${value ? 'ON' : 'OFF'}`, true);
+        }
+
+        function quickRange(sh, sm, eh, em) {
+            document.getElementById('rStartH').value = sh;
+            document.getElementById('rStartM').value = sm;
+            document.getElementById('rEndH').value = eh;
+            document.getElementById('rEndM').value = em;
+        }
+
+        function toggleHour(h) {
+            const start = h * 60;
+            const current = scheduleData[start];
+            for (let i = start; i < start + 60; i++) {
+                scheduleData[i] = !current;
+            }
+            updateUI();
+        }
+
+        function setPreset(type) {
+            switch(type) {
+                case 'workday':
+                    scheduleData.fill(false);
+                    for (let i = 9*60; i < 18*60; i++) scheduleData[i] = true;
+                    break;
+                case 'night':
+                    scheduleData.fill(false);
+                    for (let i = 22*60; i < 24*60; i++) scheduleData[i] = true;
+                    for (let i = 0; i < 6*60; i++) scheduleData[i] = true;
+                    break;
+                case 'always':
+                    scheduleData.fill(true);
+                    break;
+                case 'never':
+                    scheduleData.fill(false);
+                    break;
+                case 'invert':
+                    scheduleData = scheduleData.map(x => !x);
+                    break;
+            }
+            updateUI();
+        }
+
+        function invertSchedule() {
+            scheduleData = scheduleData.map(x => !x);
+            updateUI();
+        }
+
+        function importHex() {
+            const hex = document.getElementById('hexInput').value.trim();
+            fetch('/api/schedule/hex', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({hex: hex})
+            })
+            .then(r => r.json())
+            .then(data => {
+                scheduleData = data.minutes;
+                updateUI();
+                showStatus('Imported', true);
+            })
+            .catch(e => showStatus('Import failed: ' + e, false));
+        }
+
+        function exportHex() {
+            const hex = document.getElementById('hexDisplay').textContent;
+            navigator.clipboard.writeText(hex);
+            showStatus('Copied to clipboard!', true);
+        }
+
+        // UI Updates
+        function updateUI() {
+            createGrid();
+            createTimeline();
+            updateStats();
+        }
+
+        function updateStats() {
+            const active = scheduleData.filter(x => x).length;
+            document.getElementById('activeCount').textContent = active;
+        }
+
+        function showStatus(text, success) {
+            const indicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            indicator.className = 'status-indicator' + (success ? '' : ' inactive');
+            statusText.textContent = text;
+        }
+
+        // Mouse up handler for drag
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            dragValue = null;
+        });
+
+        // Start
+        init();
+    </script>
+</body>
+</html>

@@ -37,7 +37,11 @@ if __name__ == '__main__':
     test_schedule.set_range(9, 0, 18, 0, True)  # Work hours
 
     print("Starting development server...")
-    print("Open http://localhost:5000 in your browser")
+    print("Open http://localhost:5000/schedule/ in your browser")
 
-    app = ScheduleApp(test_schedule)
-    app.app.run(host='localhost', port=5000, debug=True)
+    web_schedule_cntrl = ScheduleApp(test_schedule)
+
+    main_app = Microdot()
+    main_app.mount(web_schedule_cntrl.app, url_prefix='/schedule')
+
+    main_app.run(host='localhost', port=5000, debug=True)

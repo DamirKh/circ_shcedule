@@ -38,7 +38,7 @@ class ScheduleApp:
 
         @self.app.route('/api/schedule', methods=['GET'])
         async def get_schedule(request):
-            """Get current schedule as JSON."""
+            """Get current schedule as JSON (1440 minutes for compatibility)."""
             minutes = []
             for m in range(Schedule.MINUTES_PER_DAY):
                 minutes.append(self.schedule.is_active_minute(m))
@@ -46,12 +46,13 @@ class ScheduleApp:
             return {
                 'minutes': minutes,
                 'hex': self.schedule.to_hex(),
-                'active_count': len(self.schedule)
+                'active_count': len(self.schedule),
+                'intervals_5min': 288  # Indicate 5-min granularity
             }
 
         @self.app.route('/api/schedule', methods=['POST'])
         async def set_schedule(request):
-            """Set schedule from JSON array of booleans."""
+            """Set schedule from JSON array of 1440 booleans."""
             try:
                 data = json.loads(request.body)
                 minutes = data.get('minutes', [])
@@ -97,17 +98,22 @@ class ScheduleApp:
 
         @self.app.route('/api/range', methods=['POST'])
         async def set_range(request):
-            """Set a range directly."""
+            """Set a range directly (5-min aligned)."""
             try:
                 data = json.loads(request.body)
-                self.schedule.set_range(
-                    data.get('start_h', 0),
-                    data.get('start_m', 0),
-                    data.get('end_h', 0),
-                    data.get('end_m', 0),
-                    data.get('active', True)
-                )
-                return {'success': True, 'hex': self.schedule.to_hex()}
+                # Align to 5-minute boundaries
+                start_h = data.get('start_h', 0)
+                start_m = (data.get('start_m', 0) // 5) * 5
+                end_h = data.get('end_h', 0)
+                end_m = (data.get('end_m', 0) // 5) * 5
+
+                self.schedule.set_range(start_h, start_m, end_h, end_m,
+                                        data.get('active', True))
+                return {
+                    'success': True,
+                    'hex': self.schedule.to_hex(),
+                    'aligned': {'start': f'{start_h}:{start_m}', 'end': f'{end_h}:{end_m}'}
+                }
             except Exception as e:
                 return {'error': str(e)}, 400
 
@@ -115,7 +121,7 @@ class ScheduleApp:
         async def clear_schedule(request):
             """Clear entire schedule."""
             self.schedule.clear()
-            return {'success': True}
+            return {'success': True, 'hex': self.schedule.to_hex()}
 
         @self.app.route('/api/fill', methods=['POST'])
         async def fill_schedule(request):
@@ -126,4 +132,5 @@ class ScheduleApp:
                 return {'success': True, 'hex': self.schedule.to_hex()}
             except Exception as e:
                 return {'error': str(e)}, 400
+
 
